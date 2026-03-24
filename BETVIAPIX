@@ -1,0 +1,363 @@
+import React, { useState, useEffect } from "react";
+
+interface Aposta {
+  id: number;
+  jogo: string;
+  tipo: string;
+  odd: number;
+  valor: number;
+  resultado?: "ganhou" | "perdeu";
+  aoVivo?: boolean;
+}
+
+interface Conquista {
+  id: number;
+  nome: string;
+  descricao: string;
+  recompensa: number;
+  desbloqueada: boolean;
+}
+
+const conquistasIniciais: Conquista[] = [
+  { id: 1, nome: "Primeira Aposta", descricao: "Faça sua primeira aposta", recompensa: 100, desbloqueada: false },
+  { id: 2, nome: "Primeira Vitória", descricao: "Ganhe sua primeira aposta", recompensa: 250, desbloqueada: false },
+  { id: 3, nome: "Apostador Nível 5", descricao: "Alcance o nível 5", recompensa: 500, desbloqueada: false },
+  { id: 4, nome: "Ganhador de Torneio", descricao: "Vença qualquer torneio", recompensa: 1000, desbloqueada: false },
+  { id: 5, nome: "Máquina de Apostas", descricao: "Faça 20 apostas", recompensa: 800, desbloqueada: false },
+  { id: 6, nome: "Milionário", descricao: "Alcance R$ 5000 de saldo", recompensa: 1500, desbloqueada: false },
+  { id: 7, nome: "Especialista em Clássicos", descricao: "Ganhe 5 apostas em El Clásico ou Derby", recompensa: 1200, desbloqueada: false },
+  { id: 8, nome: "Lenda do ProBet", descricao: "Alcance o nível 10", recompensa: 3000, desbloqueada: false },
+];
+
+export default function App() {
+  const [saldo, setSaldo] = useState(1000);
+  const [usuario, setUsuario] = useState("");
+  const [logado, setLogado] = useState(false);
+  const [nivel, setNivel] = useState(1);
+  const [xp, setXp] = useState(0);
+  const xpPorNivel = 300;
+
+  const [valorAposta, setValorAposta] = useState(100);
+  const [abaAtiva, setAbaAtiva] = useState<"jogos" | "aoVivo" | "torneios" | "ranking" | "conquistas">("jogos");
+
+  const [historico, setHistorico] = useState<Aposta[]>([]);
+  const [apostasPendentes, setApostasPendentes] = useState<Aposta[]>([]);
+  const [apostasAoVivo, setApostasAoVivo] = useState<Aposta[]>([]);
+
+  const [torneioAtivo, setTorneioAtivo] = useState<number | null>(null);
+  const [jogosCompletados, setJogosCompletados] = useState(0);
+
+  const [conquistas, setConquistas] = useState<Conquista[]>(conquistasIniciais);
+  const [ranking, setRanking] = useState([
+    { nome: "NeymarJr10", nivel: 12, saldo: 12450 },
+    { nome: "CR7Fan", nivel: 11, saldo: 9870 },
+    { nome: "MessiGOAT", nivel: 10, saldo: 8650 },
+    { nome: "BetKingBR", nivel: 9, saldo: 7420 },
+    { nome: "FutebolMania", nivel: 8, saldo: 6310 },
+  ]);
+
+  const todosJogos = [
+    { id: 1, times: "Arsenal x Aston Villa", odds: { casa: 1.78, empate: 3.45, fora: 4.55 }, stats: { gols: 2.6, escanteios: 9, cartoes: 4 } },
+    { id: 2, times: "Barcelona x Real Madrid", odds: { casa: 2.25, empate: 3.35, fora: 2.85 }, stats: { gols: 3.2, escanteios: 11, cartoes: 5 } },
+    { id: 3, times: "Manchester City x Liverpool", odds: { casa: 1.92, empate: 3.65, fora: 3.55 }, stats: { gols: 3.0, escanteios: 10, cartoes: 4 } },
+    { id: 4, times: "Bayern x Dortmund", odds: { casa: 1.68, empate: 4.05, fora: 4.70 }, stats: { gols: 3.5, escanteios: 12, cartoes: 6 } },
+    { id: 5, times: "Flamengo x Palmeiras", odds: { casa: 2.15, empate: 3.25, fora: 3.40 }, stats: { gols: 2.7, escanteios: 10, cartoes: 6 } },
+  ];
+
+  const torneios = [
+    { id: 1, nome: "Copa Iniciante", premio: 500, nivelMinimo: 1, jogos: 4 },
+    { id: 2, nome: "Copa Elite", premio: 1500, nivelMinimo: 4, jogos: 6 },
+    { id: 3, nome: "Copa dos Campeões", premio: 4000, nivelMinimo: 7, jogos: 8 },
+  ];
+
+  // Multiplicador de bônus por nível
+  const bonusNivel = 1 + (nivel - 1) * 0.08; // +8% por nível
+
+  const ganharXP = (quantidade: number) => {
+    let novoXp = xp + quantidade;
+    let novoNivel = nivel;
+
+    while (novoXp >= xpPorNivel * novoNivel) {
+      novoXp -= xpPorNivel * novoNivel;
+      novoNivel++;
+      // Recompensa por subir de nível
+      setSaldo(s => s + 200 * novoNivel);
+    }
+
+    setXp(novoXp);
+    setNivel(novoNivel);
+
+    // Verificar conquistas de nível
+    if (novoNivel >= 5 && !conquistas[2].desbloqueada) desbloquearConquista(3);
+    if (novoNivel >= 10 && !conquistas[7].desbloqueada) desbloquearConquista(8);
+  };
+
+  const desbloquearConquista = (id: number) => {
+    setConquistas(prev =>
+      prev.map(c => c.id === id ? { ...c, desbloqueada: true } : c)
+    );
+    const conquista = conquistas.find(c => c.id === id);
+    if (conquista) {
+      setSaldo(s => s + conquista.recompensa);
+      alert(`🏆 Conquista Desbloqueada!\n\n${conquista.nome}\n${conquista.descricao}\n\n+ R$ ${conquista.recompensa}`);
+    }
+  };
+
+  const fazerAposta = (jogo: any, tipo: string, odd: number, aoVivo = false) => {
+    if (valorAposta <= 0 || saldo < valorAposta) {
+      alert("Saldo insuficiente ou valor inválido!");
+      return;
+    }
+
+    const novaAposta: Aposta = {
+      id: Date.now(),
+      jogo: jogo.times,
+      tipo,
+      odd: aoVivo ? Number((odd * (0.95 + Math.random() * 0.1)).toFixed(2)) : odd,
+      valor: valorAposta,
+      aoVivo,
+    };
+
+    if (aoVivo) {
+      setApostasAoVivo(prev => [...prev, novaAposta]);
+    } else {
+      setApostasPendentes(prev => [...prev, novaAposta]);
+    }
+    setSaldo(s => s - valorAposta);
+
+    // Primeira aposta
+    if (historico.length + apostasPendentes.length + apostasAoVivo.length === 0) {
+      desbloquearConquista(1);
+    }
+  };
+
+  const finalizarRodada = (isAoVivo = false) => {
+    const apostas = isAoVivo ? apostasAoVivo : apostasPendentes;
+    if (apostas.length === 0) return;
+
+    let xpGanho = 0;
+    let vitorias = 0;
+    let novoHistorico = [...historico];
+
+    apostas.forEach(aposta => {
+      const chance = 1 / aposta.odd;
+      const ganhou = Math.random() < chance * 0.93;
+
+      const resultado = ganhou ? "ganhou" : "perdeu";
+      const lucro = ganhou ? Math.round(aposta.valor * aposta.odd * bonusNivel) : 0;
+
+      novoHistorico.push({ ...aposta, resultado });
+
+      if (ganhou) {
+        setSaldo(s => s + lucro);
+        xpGanho += 30;
+        vitorias++;
+      } else {
+        xpGanho += 10;
+      }
+    });
+
+    setHistorico(novoHistorico);
+    if (isAoVivo) setApostasAoVivo([]); else setApostasPendentes([]);
+
+    ganharXP(xpGanho);
+
+    // Conquistas
+    if (vitorias >= 1 && !conquistas[1].desbloqueada) desbloquearConquista(2);
+    if (historico.length + apostas.length >= 20 && !conquistas[4].desbloqueada) desbloquearConquista(5);
+
+    if (saldo >= 5000 && !conquistas[5].desbloqueada) desbloquearConquista(6);
+
+    alert(`Rodada finalizada!\nXP ganho: ${xpGanho}\nBônus de nível: +${Math.round((bonusNivel - 1) * 100)}%`);
+  };
+
+  const entrarEmTorneio = (torneio: any) => {
+    if (nivel < torneio.nivelMinimo) return alert(`Nível mínimo necessário: ${torneio.nivelMinimo}`);
+    setTorneioAtivo(torneio.id);
+    setJogosCompletados(0);
+    alert(`Entrou no ${torneio.nome}!`);
+  };
+
+  const completarTorneio = () => {
+    const torneio = torneios.find(t => t.id === torneioAtivo);
+    if (!torneio) return;
+
+    setSaldo(s => s + torneio.premio);
+    desbloquearConquista(4);
+    ganharXP(200);
+    setTorneioAtivo(null);
+    alert(`🎉 Torneio ${torneio.nome} concluído!\nPrêmio: R$ ${torneio.premio}`);
+  };
+
+  // Atualizar ranking (simulação)
+  useEffect(() => {
+    if (saldo > 3000) {
+      setRanking(prev => {
+        const novo = [...prev, { nome: usuario || "Você", nivel, saldo }];
+        return novo.sort((a, b) => b.saldo - a.saldo).slice(0, 10);
+      });
+    }
+  }, [saldo, nivel, usuario]);
+
+  if (!logado) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-black to-gray-950 flex items-center justify-center">
+        <div className="bg-gray-900 p-12 rounded-3xl shadow-2xl w-96 border border-green-500">
+          <h1 className="text-5xl font-black text-center mb-10 text-green-400">PROBET</h1>
+          <input
+            className="w-full p-5 rounded-2xl bg-gray-800 text-white text-xl mb-6 focus:ring-2 focus:ring-green-500 outline-none"
+            placeholder="Nome de usuário"
+            onChange={e => setUsuario(e.target.value)}
+          />
+          <button onClick={() => setLogado(true)} className="w-full py-5 bg-green-600 hover:bg-green-500 text-xl font-bold rounded-2xl transition">
+            Entrar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-950 to-black text-white p-6 pb-20">
+      <header className="max-w-6xl mx-auto flex justify-between items-center mb-10">
+        <h1 className="text-4xl font-bold flex items-center gap-3">⚽ ProBet</h1>
+        <div className="flex items-center gap-8 text-lg">
+          <div>👤 {usuario || "Jogador"}</div>
+          <div>Nível <span className="text-yellow-400 font-bold">#{nivel}</span> • XP {xp}/{xpPorNivel * nivel}</div>
+          <div className="text-green-400 font-bold">💰 R$ {saldo.toLocaleString('pt-BR')}</div>
+        </div>
+      </header>
+
+      {/* Abas */}
+      <div className="max-w-6xl mx-auto flex flex-wrap gap-2 mb-10 border-b border-gray-700 pb-2">
+        {["jogos", "aoVivo", "torneios", "ranking", "conquistas"].map((aba: any) => (
+          <button
+            key={aba}
+            onClick={() => setAbaAtiva(aba)}
+            className={`px-7 py-3 rounded-2xl font-medium transition ${abaAtiva === aba ? "bg-green-600" : "hover:bg-gray-800"}`}
+          >
+            {aba === "jogos" && "Jogos Normais"}
+            {aba === "aoVivo" && "Apostas Ao Vivo 🔥"}
+            {aba === "torneios" && "Torneios"}
+            {aba === "ranking" && "Ranking Global"}
+            {aba === "conquistas" && "Conquistas"}
+          </button>
+        ))}
+      </div>
+
+      {/* ABA JOGOS NORMAIS */}
+      {abaAtiva === "jogos" && (
+        <div className="max-w-5xl mx-auto">
+          <div className="max-w-md mx-auto mb-10 bg-gray-900 p-8 rounded-3xl">
+            <p className="text-center text-gray-400 mb-3">Valor da Aposta</p>
+            <input type="number" value={valorAposta} onChange={e => setValorAposta(Math.max(50, Number(e.target.value)))} className="w-full text-5xl font-bold text-center bg-gray-800 p-6 rounded-2xl" />
+            <p className="text-center text-xs text-green-400 mt-2">Bônus de nível: +{Math.round((bonusNivel - 1) * 100)}%</p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            {todosJogos.map(jogo => (
+              <div key={jogo.id} className="bg-gray-900 p-7 rounded-3xl border border-gray-700 hover:border-green-500 transition">
+                <h3 className="text-xl font-bold text-center mb-6">{jogo.times}</h3>
+                <div className="grid grid-cols-3 gap-4">
+                  {Object.entries(jogo.odds).map(([tipo, odd]) => (
+                    <button key={tipo} onClick={() => fazerAposta(jogo, tipo === "casa" ? "Casa" : tipo === "empate" ? "Empate" : "Fora", odd)} className={`py-6 rounded-2xl font-bold transition hover:scale-105 ${tipo === "casa" ? "bg-green-600" : tipo === "empate" ? "bg-yellow-600" : "bg-red-600"}`}>
+                      {tipo === "casa" ? "Casa" : tipo === "empate" ? "Empate" : "Fora"}<br />{odd}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {apostasPendentes.length > 0 && (
+            <button onClick={() => finalizarRodada(false)} className="mt-12 w-full max-w-md mx-auto block py-6 bg-green-600 hover:bg-green-500 rounded-3xl text-2xl font-bold">
+              Finalizar Rodada ({apostasPendentes.length} apostas)
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ABA AO VIVO */}
+      {abaAtiva === "aoVivo" && (
+        <div className="max-w-5xl mx-auto">
+          <p className="text-center text-red-400 text-xl mb-8">🔴 Ao Vivo - Odds mudando em tempo real</p>
+          <div className="grid md:grid-cols-2 gap-6">
+            {todosJogos.slice(0, 4).map(jogo => (
+              <div key={jogo.id} className="bg-red-950/30 border border-red-500 p-7 rounded-3xl">
+                <h3 className="text-center font-bold mb-4">🔴 {jogo.times}</h3>
+                <div className="grid grid-cols-3 gap-4">
+                  {Object.entries(jogo.odds).map(([tipo, odd]) => (
+                    <button key={tipo} onClick={() => fazerAposta(jogo, tipo === "casa" ? "Casa" : tipo === "empate" ? "Empate" : "Fora", odd, true)} className="py-6 rounded-2xl bg-red-600 hover:bg-red-500 transition">
+                      {tipo.toUpperCase()}<br />{odd}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {apostasAoVivo.length > 0 && (
+            <button onClick={() => finalizarRodada(true)} className="mt-12 w-full max-w-md mx-auto block py-6 bg-red-600 hover:bg-red-500 rounded-3xl text-2xl font-bold">
+              Encerrar Apostas Ao Vivo
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ABA TORNEIOS */}
+      {abaAtiva === "torneios" && (
+        <div className="max-w-3xl mx-auto space-y-8">
+          {torneios.map(t => (
+            <div key={t.id} className="bg-gradient-to-br from-gray-900 to-gray-950 p-8 rounded-3xl border border-amber-500">
+              <h3 className="text-3xl font-bold">{t.nome}</h3>
+              <p className="text-green-400 text-2xl mt-2">Prêmio: R$ {t.premio}</p>
+              <button onClick={() => entrarEmTorneio(t)} disabled={nivel < t.nivelMinimo} className="mt-6 w-full py-4 bg-amber-500 text-black font-bold rounded-2xl disabled:opacity-50">
+                Entrar no Torneio
+              </button>
+            </div>
+          ))}
+          {torneioAtivo && (
+            <button onClick={completarTorneio} className="w-full py-5 bg-yellow-400 text-black font-bold text-xl rounded-2xl mt-8">
+              Concluir Torneio e Receber Prêmio
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ABA RANKING */}
+      {abaAtiva === "ranking" && (
+        <div className="max-w-2xl mx-auto bg-gray-900 rounded-3xl p-8">
+          <h2 className="text-3xl font-bold text-center mb-8">🏆 Ranking Global</h2>
+          <div className="space-y-4">
+            {ranking.map((player, i) => (
+              <div key={i} className={`flex justify-between items-center p-5 rounded-2xl ${player.nome === (usuario || "Você") ? "bg-green-900 border border-green-500" : "bg-gray-800"}`}>
+                <div className="flex items-center gap-4">
+                  <span className="text-2xl">#{i + 1}</span>
+                  <span>{player.nome}</span>
+                </div>
+                <div className="text-right">
+                  <div>Nível {player.nivel}</div>
+                  <div className="text-green-400">R$ {player.saldo}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ABA CONQUISTAS */}
+      {abaAtiva === "conquistas" && (
+        <div className="max-w-3xl mx-auto grid md:grid-cols-2 gap-6">
+          {conquistas.map(c => (
+            <div key={c.id} className={`p-6 rounded-3xl border ${c.desbloqueada ? "border-green-500 bg-green-950/30" : "border-gray-700 bg-gray-900"}`}>
+              <div className="text-4xl mb-3">{c.desbloqueada ? "🏆" : "🔒"}</div>
+              <h4 className="font-bold text-xl">{c.nome}</h4>
+              <p className="text-sm text-gray-400 mt-2">{c.descricao}</p>
+              <p className="text-green-400 mt-4">+ R$ {c.recompensa}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
